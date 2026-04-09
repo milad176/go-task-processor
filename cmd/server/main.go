@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/milad176/go-task-processor/internal/job"
@@ -11,40 +12,54 @@ import (
 func main() {
 	fmt.Println("Task Processor Starting...")
 
-	// 1. Create a channel (queue)
+	// Create a channel (queue)
 	jobQueue := make(chan job.Job, 100)
 
-	// 2. Start workers (goroutines)
+	var wg sync.WaitGroup
+
+	// Start workers (goroutines)
 	for i := 1; i <= 3; i++ {
 
-		go worker.StartWorker(i, jobQueue)
+		go worker.StartWorker(i, jobQueue, &wg)
 	}
 
-	// 3. Send jobs into the queue
-	jobQueue <- job.Job{
-		ID:   "1",
-		Type: "print",
-		Payload: map[string]interface{}{
-			"message": "Hello from Job 1",
+	// Add jobs
+	jobList := []job.Job{
+		{
+			ID:   "1",
+			Type: "print",
+			Payload: map[string]interface{}{
+				"message": "Hello from Job 1",
+			},
+		},
+		{
+			ID:   "2",
+			Type: "sleep",
+			Payload: map[string]interface{}{
+				"duration": 2,
+			},
+		},
+		{
+			ID:   "3",
+			Type: "print",
+			Payload: map[string]interface{}{
+				"message": "Hello from Job 3",
+			},
 		},
 	}
 
-	jobQueue <- job.Job{
-		ID:   "2",
-		Type: "sleep",
-		Payload: map[string]interface{}{
-			"duration": 2,
-		},
-	}
+	wg.Add(len(jobList))
 
-	jobQueue <- job.Job{
-		ID:   "3",
-		Type: "email",
-		Payload: map[string]interface{}{
-			"message": "Hello from Job 3",
-		},
-	}
+	// Send jobs into the queue
+	go func() {
+		for _, job := range jobList {
+			jobQueue <- job
+		}
+		close(jobQueue) // Close the channel after adding all jobs
+	}()
 
-	// 4. Keep the program running
-	time.Sleep(5 * time.Second)
+	wg.Wait() // Wait for all jobs to be processed
+
+	fmt.Println("All jobs processed. Shutting down.")
+	time.Sleep(1 * time.Second) // Give workers time to finish
 }

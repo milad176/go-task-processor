@@ -2,12 +2,13 @@ package worker
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/milad176/go-task-processor/internal/job"
 )
 
-func StartWorker(id int, jobs <-chan job.Job) {
+func StartWorker(id int, jobs <-chan job.Job, wg *sync.WaitGroup) {
 	fmt.Printf("Worker %d started\n", id)
 
 	for job := range jobs {
@@ -15,6 +16,8 @@ func StartWorker(id int, jobs <-chan job.Job) {
 
 		processJob(job)
 		fmt.Printf("Worker %d finished job: %s\n", id, job.ID)
+		wg.Done()
+
 	}
 }
 
