@@ -16,11 +16,12 @@ func main() {
 	jobQueue := make(chan job.Job, 100)
 
 	var wg sync.WaitGroup
+	jobStore := job.NewJobStore()
 
 	// Start workers (goroutines)
 	for i := 1; i <= 3; i++ {
 
-		go worker.StartWorker(i, jobQueue, &wg)
+		go worker.StartWorker(i, jobQueue, jobStore, &wg)
 	}
 
 	// Add jobs
@@ -53,12 +54,18 @@ func main() {
 	// Send jobs into the queue
 	go func() {
 		for _, job := range jobList {
+			jobStore.Add(job)
 			jobQueue <- job
 		}
 		close(jobQueue) // Close the channel after adding all jobs
 	}()
 
 	wg.Wait() // Wait for all jobs to be processed
+
+	for _, job := range jobList {
+		result := jobStore.Get(job.ID)
+		fmt.Println("Job", result.ID, "status:", result.Status)
+	}
 
 	fmt.Println("All jobs processed. Shutting down.")
 	time.Sleep(1 * time.Second) // Give workers time to finish

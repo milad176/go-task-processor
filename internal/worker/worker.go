@@ -8,29 +8,44 @@ import (
 	"github.com/milad176/go-task-processor/internal/job"
 )
 
-func StartWorker(id int, jobs <-chan job.Job, wg *sync.WaitGroup) {
+func StartWorker(id int, jobs <-chan job.Job, jobStore *job.JobStore, wg *sync.WaitGroup) {
 	fmt.Printf("Worker %d started\n", id)
 
 	for job := range jobs {
-		fmt.Printf("Worker %d picked job %s of type %s\n", id, job.ID, job.Type)
+		current := jobStore.Get(job.ID)
+		fmt.Printf("Worker %d picked job %s of type %s with status %s\n", id, current.ID, current.Type, current.Status)
 
-		processJob(job)
-		fmt.Printf("Worker %d finished job: %s\n", id, job.ID)
+		updated := jobStore.UpdateStatus(job.ID, "processing")
+		fmt.Printf("Job %s moved to %s\n", job.ID, updated.Status)
+
+		err := processJob(current)
+
+		if err != nil {
+			jobStore.UpdateStatus(job.ID, "failed")
+			fmt.Printf("Job %s failed: %v\n", job.ID, err)
+		} else {
+			jobStore.UpdateStatus(job.ID, "done")
+		}
+
+		final := jobStore.Get(job.ID)
+		fmt.Printf("Worker %d finished job %s with status %s\n", id, final.ID, final.Status)
+
 		wg.Done()
-
 	}
 }
 
-func processJob(job job.Job) {
+func processJob(job job.Job) error {
 	switch job.Type {
 	case "print":
 		fmt.Println("Message:", job.Payload["message"])
+		return nil
 
 	case "sleep":
 		fmt.Println("Sleeping...")
 		time.Sleep(2 * time.Second)
+		return nil
 
 	default:
-		fmt.Printf("Unknown job type: %s\n", job.Type)
+		return fmt.Errorf("unknown job type: %s", job.Type)
 	}
 }
