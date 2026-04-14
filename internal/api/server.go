@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/milad176/go-task-processor/internal/job"
 )
 
@@ -45,6 +46,13 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	if job.ID != "" {
+		http.Error(w, "ID should not be provided", http.StatusBadRequest)
+		return
+	}
+
+	job.ID = uuid.New().String()
 
 	s.jobStore.Add(job) // Add job to store
 
