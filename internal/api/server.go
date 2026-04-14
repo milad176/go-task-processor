@@ -14,6 +14,10 @@ type Server struct {
 	queue    chan job.Job
 }
 
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 func NewServer(jobStore *job.JobStore, queue chan job.Job) *Server {
 	return &Server{
 		jobStore: jobStore,
@@ -49,7 +53,11 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	err = job.Validate()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: err.Error(),
+		})
 		return
 	}
 
