@@ -47,8 +47,9 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if job.ID != "" {
-		http.Error(w, "ID should not be provided", http.StatusBadRequest)
+	err = job.Validate()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
