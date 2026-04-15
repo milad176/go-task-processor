@@ -18,6 +18,16 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+func writeJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, ErrorResponse{Error: message})
+}
+
 func NewServer(jobStore *job.JobStore, queue chan job.Job) *Server {
 	return &Server{
 		jobStore: jobStore,
@@ -26,8 +36,8 @@ func NewServer(jobStore *job.JobStore, queue chan job.Job) *Server {
 }
 
 func (s *Server) Start() {
-	http.HandleFunc("/jobs", s.handleCreateJob)
-	http.HandleFunc("/jobs/", s.handleGetJob)
+	http.Handle("/jobs", LoggingMiddleware(http.HandlerFunc(s.handleCreateJob)))
+	http.Handle("/jobs/", LoggingMiddleware(http.HandlerFunc(s.handleGetJob)))
 
 	fmt.Println("🚀 Server listening on http://localhost:8080")
 
@@ -39,7 +49,7 @@ func (s *Server) Start() {
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -47,17 +57,13 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&job)
 	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
 	err = job.Validate()
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{
-			Error: err.Error(),
-		})
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -75,7 +81,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -84,7 +90,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	job := s.jobStore.Get(id)
 
 	if job.ID == "" {
-		http.Error(w, "Job not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "Job not found")
 		return
 	}
 
