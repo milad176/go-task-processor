@@ -18,6 +18,16 @@ func (s *JobStore) Add(job Job) {
 	defer s.mu.Unlock()
 
 	job.Status = "pending"
+
+	const defaultRetries = 3
+	const maxAllowedRetries = 5
+
+	if job.MaxRetries <= 0 {
+		job.MaxRetries = defaultRetries
+	} else if job.MaxRetries > maxAllowedRetries {
+		job.MaxRetries = maxAllowedRetries
+	}
+
 	s.jobs[job.ID] = job
 }
 
@@ -26,6 +36,13 @@ func (s *JobStore) Get(id string) Job {
 	defer s.mu.Unlock()
 
 	return s.jobs[id]
+}
+
+func (s *JobStore) Update(job Job) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.jobs[job.ID] = job
 }
 
 func (s *JobStore) UpdateStatus(id string, status string) Job {

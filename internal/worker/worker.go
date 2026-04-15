@@ -7,7 +7,7 @@ import (
 	"github.com/milad176/go-task-processor/internal/job"
 )
 
-func StartWorker(id int, jobs <-chan job.Job, jobStore *job.JobStore) {
+func StartWorker(id int, jobs chan job.Job, jobStore *job.JobStore) {
 	fmt.Printf("Worker %d started\n", id)
 
 	for job := range jobs {
@@ -20,8 +20,22 @@ func StartWorker(id int, jobs <-chan job.Job, jobStore *job.JobStore) {
 		err := processJob(current)
 
 		if err != nil {
-			jobStore.UpdateStatus(job.ID, "failed")
-			fmt.Printf("Job %s failed: %v\n", job.ID, err)
+			job.Retries++
+			if job.Retries <= job.MaxRetries {
+				jobStore.UpdateStatus(job.ID, "pending")
+				fmt.Printf("Job %s failed (attempt %d/%d). Retrying...\n", job.ID, job.Retries, job.MaxRetries)
+
+				jobStore.Update(job) // update retries
+
+				time.Sleep(1 * time.Second)
+
+				jobs <- job // requeue job
+
+			} else {
+				jobStore.UpdateStatus(job.ID, "failed")
+				fmt.Printf("Job %s failed permanently after %d attempts\n", job.ID, job.Retries)
+			}
+
 		} else {
 			jobStore.UpdateStatus(job.ID, "done")
 		}

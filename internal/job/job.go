@@ -3,10 +3,12 @@ package job
 import "fmt"
 
 type Job struct {
-	ID      string
-	Type    string
-	Payload map[string]interface{}
-	Status  string
+	ID         string
+	Type       string
+	Payload    map[string]interface{}
+	Status     string
+	Retries    int
+	MaxRetries int
 }
 
 func (j *Job) Validate() error {
@@ -27,6 +29,11 @@ func (j *Job) Validate() error {
 	case "sleep":
 		if j.Payload["duration"] == "" {
 			return fmt.Errorf("duration is required for sleep job")
+		}
+
+	case "fail":
+		if j.Payload["message"] == "" {
+			return fmt.Errorf("message is required for fail job")
 		}
 
 	default:
