@@ -19,8 +19,8 @@ func (s *JobStore) Add(job Job) {
 
 	job.Status = "pending"
 
-	const defaultRetries = 3
-	const maxAllowedRetries = 5
+	const defaultRetries = 5
+	const maxAllowedRetries = 7
 
 	if job.MaxRetries <= 0 {
 		job.MaxRetries = defaultRetries

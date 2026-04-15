@@ -21,13 +21,17 @@ func StartWorker(id int, jobs chan job.Job, jobStore *job.JobStore) {
 
 		if err != nil {
 			job.Retries++
+
 			if job.Retries <= job.MaxRetries {
+
+				backoff := getBackoffDuration(job.Retries)
+
 				jobStore.UpdateStatus(job.ID, "pending")
 				fmt.Printf("Job %s failed (attempt %d/%d). Retrying...\n", job.ID, job.Retries, job.MaxRetries)
 
 				jobStore.Update(job) // update retries
 
-				time.Sleep(1 * time.Second)
+				time.Sleep(backoff)
 
 				jobs <- job // requeue job
 
@@ -59,4 +63,14 @@ func processJob(job job.Job) error {
 	default:
 		return fmt.Errorf("unknown job type: %s", job.Type)
 	}
+}
+
+func getBackoffDuration(retries int) time.Duration {
+	max := 10 * time.Second
+	backoff := time.Duration(1<<retries) * time.Second
+
+	if backoff > max {
+		return max
+	}
+	return backoff
 }
