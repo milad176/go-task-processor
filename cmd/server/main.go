@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/milad176/go-task-processor/internal/api"
 	"github.com/milad176/go-task-processor/internal/job"
@@ -29,24 +31,32 @@ func main() {
 
 	server := api.NewServer(jobStore, jobQueue) // Start API server
 
-	// ✅ Run server in goroutine
+	// Start HTTP server in goroutine
 	go func() {
-		if err := server.Start(); err != nil {
+		if err := server.Start(); err != nil && err != http.ErrServerClosed {
 			fmt.Println("Server error:", err)
 		}
 	}()
 
-	// ✅ Setup signal handling BEFORE blocking
+	// Listen for Ctrl+C BEFORE blocking
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// ✅ Block here (VERY IMPORTANT)
+	// Block here (VERY IMPORTANT)
 	<-sigChan
 
 	fmt.Println("\nShutting down gracefully...")
 
 	// Stop workers
 	cancel()
+
+	// Shutdown HTTP server
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		fmt.Println("Server shutdown error:", err)
+	}
 
 	fmt.Println("Shutdown complete")
 }

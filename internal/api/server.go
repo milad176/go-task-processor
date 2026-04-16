@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 type Server struct {
 	jobStore *job.JobStore
 	queue    chan job.Job
+	server   *http.Server
 }
 
 type ErrorResponse struct {
@@ -19,19 +21,31 @@ type ErrorResponse struct {
 }
 
 func NewServer(jobStore *job.JobStore, queue chan job.Job) *Server {
-	return &Server{
+	s := &Server{
 		jobStore: jobStore,
 		queue:    queue,
 	}
+
+	mux := http.NewServeMux()
+
+	mux.Handle("/jobs", LoggingMiddleware(http.HandlerFunc(s.handleCreateJob)))
+	mux.Handle("/jobs/", LoggingMiddleware(http.HandlerFunc(s.handleGetJob)))
+
+	s.server = &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
+
+	return s
 }
 
 func (s *Server) Start() error {
-	http.Handle("/jobs", LoggingMiddleware(http.HandlerFunc(s.handleCreateJob)))
-	http.Handle("/jobs/", LoggingMiddleware(http.HandlerFunc(s.handleGetJob)))
-
 	fmt.Println("🚀 Server listening on http://localhost:8080")
+	return s.server.ListenAndServe()
+}
 
-	return http.ListenAndServe(":8080", nil)
+func (s *Server) Shutdown(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
