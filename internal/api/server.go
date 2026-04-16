@@ -25,16 +25,13 @@ func NewServer(jobStore *job.JobStore, queue chan job.Job) *Server {
 	}
 }
 
-func (s *Server) Start() {
+func (s *Server) Start() error {
 	http.Handle("/jobs", LoggingMiddleware(http.HandlerFunc(s.handleCreateJob)))
 	http.Handle("/jobs/", LoggingMiddleware(http.HandlerFunc(s.handleGetJob)))
 
 	fmt.Println("🚀 Server listening on http://localhost:8080")
 
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		panic(err)
-	}
+	return http.ListenAndServe(":8080", nil)
 }
 
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
