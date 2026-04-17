@@ -3,12 +3,12 @@ package job
 import "fmt"
 
 type Job struct {
-	ID         string
-	Type       string
-	Payload    map[string]interface{}
-	Status     string
-	Retries    int
-	MaxRetries int
+	ID         string                 `json:"ID"`
+	Type       string                 `json:"Type"`
+	Payload    map[string]interface{} `json:"Payload"`
+	Status     string                 `json:"Status"`
+	Retries    int                    `json:"-"`
+	MaxRetries int                    `json:"-"`
 }
 
 func (j *Job) Validate() error {
