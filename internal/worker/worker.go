@@ -8,7 +8,7 @@ import (
 	"github.com/milad176/go-task-processor/internal/job"
 )
 
-func StartWorker(id int, jobs chan job.Job, jobStore *job.JobStore, ctx context.Context) {
+func StartWorker(id int, jobs chan job.Job, repo *job.Repository, ctx context.Context) {
 	fmt.Printf("Worker %d started\n", id)
 
 	for {
@@ -21,15 +21,12 @@ func StartWorker(id int, jobs chan job.Job, jobStore *job.JobStore, ctx context.
 
 		// New job
 		case job := <-jobs:
-			current := jobStore.Get(job.ID)
+			fmt.Printf("Worker %d picked job %s of type %s with status %s\n", id, job.ID, job.Type, job.Status)
 
-			fmt.Printf("Worker %d picked job %s of type %s with status %s\n",
-				id, current.ID, current.Type, current.Status)
+			repo.UpdateStatus(job.ID, "processing")
+			fmt.Printf("Job %s moved to %s\n", job.ID, "processing")
 
-			updated := jobStore.UpdateStatus(job.ID, "processing")
-			fmt.Printf("Job %s moved to %s\n", job.ID, updated.Status)
-
-			err := processJob(current)
+			err := processJob(job)
 
 			if err != nil {
 				job.Retries++
@@ -38,33 +35,27 @@ func StartWorker(id int, jobs chan job.Job, jobStore *job.JobStore, ctx context.
 
 					backoff := getBackoffDuration(job.Retries)
 
-					jobStore.UpdateStatus(job.ID, "pending")
+					repo.UpdateStatus(job.ID, "pending")
 
 					fmt.Printf(
-						"Job %s failed (attempt %d/%d). Retrying in %v...\n",
-						job.ID,
-						job.Retries,
-						job.MaxRetries,
-						backoff,
+						"Job %s failed (attempt %d/%d). Retrying in %v...\n", job.ID, job.Retries, job.MaxRetries, backoff,
 					)
-
-					jobStore.Update(job)
 
 					time.Sleep(backoff)
 
 					jobs <- job // requeue
 
 				} else {
-					jobStore.UpdateStatus(job.ID, "failed")
+					repo.UpdateStatus(job.ID, "failed")
 					fmt.Printf("Job %s failed permanently after %d attempts\n", job.ID, job.Retries)
 				}
 
 			} else {
-				jobStore.UpdateStatus(job.ID, "done")
+				repo.UpdateStatus(job.ID, "done")
 			}
 
-			final := jobStore.Get(job.ID)
-			fmt.Printf("Worker %d finished job %s with status %s\n", id, final.ID, final.Status)
+			finalJob, _ := repo.Get(job.ID)
+			fmt.Printf("Worker %d finished job %s with status %s\n", id, finalJob.ID, finalJob.Status)
 		}
 	}
 }

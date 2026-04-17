@@ -11,19 +11,19 @@ import (
 )
 
 type Server struct {
-	jobStore *job.JobStore
-	queue    chan job.Job
-	server   *http.Server
+	repo   *job.Repository
+	queue  chan job.Job
+	server *http.Server
 }
 
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewServer(jobStore *job.JobStore, queue chan job.Job) *Server {
+func NewServer(repo *job.Repository, queue chan job.Job) *Server {
 	s := &Server{
-		jobStore: jobStore,
-		queue:    queue,
+		repo:  repo,
+		queue: queue,
 	}
 
 	mux := http.NewServeMux()
@@ -56,28 +56,47 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	var job job.Job
 
+	// Decode request
 	err := json.NewDecoder(r.Body).Decode(&job)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 
+	// Validate
 	err = job.Validate()
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// Assign system-controlled fields
 	job.ID = uuid.New().String()
+	job.Status = "pending"
+	job.Retries = 0
 
-	s.jobStore.Add(job) // Add job to store
+	// Retry policy
+	const defaultRetries = 5
+	const maxAllowedRetries = 7
 
-	updated := s.jobStore.Get(job.ID) // get updated job from store
+	if job.MaxRetries <= 0 {
+		job.MaxRetries = defaultRetries
+	} else if job.MaxRetries > maxAllowedRetries {
+		job.MaxRetries = maxAllowedRetries
+	}
 
-	s.queue <- updated // Push to queue
+	// Save once (clean)
+	err = s.repo.Save(job)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to save job")
+		return
+	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(updated)
+	// Push to queue
+	s.queue <- job
+
+	// Return response
+	writeJSON(w, http.StatusCreated, job)
 }
 
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +107,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 
 	id := r.URL.Path[len("/jobs/"):]
 
-	job := s.jobStore.Get(id)
+	job, _ := s.repo.Get(id)
 
 	if job.ID == "" {
 		writeError(w, http.StatusNotFound, "Job not found")
