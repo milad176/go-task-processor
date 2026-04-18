@@ -21,40 +21,60 @@ func StartWorker(id int, jobs chan job.Job, repo *job.Repository, ctx context.Co
 
 		// New job
 		case job := <-jobs:
-			fmt.Printf("Worker %d picked job %s of type %s with status %s\n", id, job.ID, job.Type, job.Status)
 
-			repo.UpdateStatus(job.ID, "processing")
-			fmt.Printf("Job %s moved to %s\n", job.ID, "processing")
+			// Try to claim job
+			claimed, err := repo.ClaimJob(job.ID)
+			if err != nil {
+				fmt.Printf("Worker %d failed to claim job %s: %v\n", id, job.ID, err)
+				continue
+			}
 
-			err := processJob(job)
+			if !claimed {
+				// another worker already took it
+				fmt.Printf("Worker %d skipped job %s (already claimed)\n", id, job.ID)
+				continue
+			}
+
+			// Now we OWN the job
+			fmt.Printf("Worker %d processing job %s\n", id, job.ID)
+
+			// Get latest data (optional but good)
+			current, _ := repo.Get(job.ID)
+
+			err = processJob(current)
 
 			if err != nil {
-				job.Retries++
+				current.Retries++
 
-				if job.Retries <= job.MaxRetries {
+				if current.Retries <= current.MaxRetries {
 
-					backoff := getBackoffDuration(job.Retries)
+					backoff := getBackoffDuration(current.Retries)
 
-					repo.UpdateStatus(job.ID, "pending")
+					repo.UpdateStatus(current.ID, "pending")
+					repo.UpdateRetries(current.ID, current.Retries)
 
 					fmt.Printf(
-						"Job %s failed (attempt %d/%d). Retrying in %v...\n", job.ID, job.Retries, job.MaxRetries, backoff,
+						"Job %s failed (attempt %d/%d). Retrying in %v...\n",
+						current.ID,
+						current.Retries,
+						current.MaxRetries,
+						backoff,
 					)
 
 					time.Sleep(backoff)
 
-					jobs <- job // requeue
+					jobs <- current // requeue
 
 				} else {
-					repo.UpdateStatus(job.ID, "failed")
-					fmt.Printf("Job %s failed permanently after %d attempts\n", job.ID, job.Retries)
+					repo.UpdateStatus(current.ID, "failed")
+					fmt.Printf("Job %s failed permanently after %d attempts\n", current.ID, current.Retries)
 				}
 
 			} else {
-				repo.UpdateStatus(job.ID, "done")
+				repo.UpdateStatus(current.ID, "done")
 			}
 
-			finalJob, _ := repo.Get(job.ID)
+			finalJob, _ := repo.Get(current.ID)
 			fmt.Printf("Worker %d finished job %s with status %s\n", id, finalJob.ID, finalJob.Status)
 		}
 	}

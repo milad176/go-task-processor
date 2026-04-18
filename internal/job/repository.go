@@ -46,7 +46,27 @@ func (r *Repository) Get(id string) (Job, error) {
 	return job, nil
 }
 
-func (r *Repository) UpdateStatus(id, status string) error {
+func (r *Repository) UpdateStatus(id string, status string) error {
 	_, err := r.db.Exec(`UPDATE jobs SET status = ? WHERE id = ?`, status, id)
 	return err
+}
+
+func (r *Repository) UpdateRetries(id string, retries int) error {
+	_, err := r.db.Exec(`UPDATE jobs SET retries = ? WHERE id = ?`, retries, id)
+	return err
+}
+
+func (r *Repository) ClaimJob(id string) (bool, error) {
+	result, err := r.db.Exec(`UPDATE jobs SET status = 'processing' WHERE id = ? AND status = 'pending'`, id)
+
+	if err != nil {
+		return false, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+
+	return rowsAffected == 1, nil
 }
