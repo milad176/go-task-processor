@@ -3,6 +3,9 @@ package job
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 )
 
 type Repository struct {
@@ -46,6 +49,34 @@ func (r *Repository) Get(id string) (Job, error) {
 	return job, nil
 }
 
+func (r *Repository) GetNextPendingJob() (Job, error) {
+	var job Job
+	var payload string
+
+	err := r.db.QueryRow(`
+		SELECT id, type, payload, status, retries, max_retries
+		FROM jobs
+		WHERE status = 'pending'
+		ORDER BY id
+		LIMIT 1
+	`).Scan(
+		&job.ID,
+		&job.Type,
+		&payload,
+		&job.Status,
+		&job.Retries,
+		&job.MaxRetries,
+	)
+
+	if err != nil {
+		return job, err
+	}
+
+	json.Unmarshal([]byte(payload), &job.Payload)
+
+	return job, nil
+}
+
 func (r *Repository) UpdateStatus(id string, status string) error {
 	_, err := r.db.Exec(`UPDATE jobs SET status = ? WHERE id = ?`, status, id)
 	return err
@@ -57,16 +88,33 @@ func (r *Repository) UpdateRetries(id string, retries int) error {
 }
 
 func (r *Repository) ClaimJob(id string) (bool, error) {
-	result, err := r.db.Exec(`UPDATE jobs SET status = 'processing' WHERE id = ? AND status = 'pending'`, id)
 
-	if err != nil {
-		return false, err
+	const maxRetries = 3
+
+	for i := 0; i < maxRetries; i++ {
+
+		result, err := r.db.Exec(`UPDATE jobs SET status = 'processing' WHERE id = ? AND status = 'pending'`, id)
+
+		if err != nil {
+
+			// Retry if DB is locked
+			if strings.Contains(err.Error(), "database is locked") {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+
+			// Real error
+			return false, err
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+
+		return rowsAffected == 1, nil
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-
-	return rowsAffected == 1, nil
+	// If all retries failed
+	return false, fmt.Errorf("failed to claim job after retries (db locked)")
 }

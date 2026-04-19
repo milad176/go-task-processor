@@ -2,13 +2,14 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
 	"github.com/milad176/go-task-processor/internal/job"
 )
 
-func StartWorker(id int, jobs chan job.Job, repo *job.Repository, ctx context.Context) {
+func StartWorker(id int, repo *job.Repository, ctx context.Context) {
 	fmt.Printf("Worker %d started\n", id)
 
 	for {
@@ -19,8 +20,22 @@ func StartWorker(id int, jobs chan job.Job, repo *job.Repository, ctx context.Co
 			fmt.Printf("Worker %d stopping...\n", id)
 			return
 
-		// New job
-		case job := <-jobs:
+		default:
+			// Try to get a pending job
+			job, err := repo.GetNextPendingJob()
+			if err != nil {
+
+				if err == sql.ErrNoRows {
+					// No jobs → normal situation
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+
+				// Real error → log it
+				fmt.Printf("Worker %d DB error: %v\n", id, err)
+				time.Sleep(1 * time.Second) // optional backoff
+				continue
+			}
 
 			// Try to claim job
 			claimed, err := repo.ClaimJob(job.ID)
@@ -38,44 +53,36 @@ func StartWorker(id int, jobs chan job.Job, repo *job.Repository, ctx context.Co
 			// Now we OWN the job
 			fmt.Printf("Worker %d processing job %s\n", id, job.ID)
 
-			// Get latest data (optional but good)
-			current, _ := repo.Get(job.ID)
-
-			err = processJob(current)
+			err = processJob(job)
 
 			if err != nil {
-				current.Retries++
+				job.Retries++
 
-				if current.Retries <= current.MaxRetries {
+				if job.Retries <= job.MaxRetries {
 
-					backoff := getBackoffDuration(current.Retries)
-
-					repo.UpdateStatus(current.ID, "pending")
-					repo.UpdateRetries(current.ID, current.Retries)
+					backoff := getBackoffDuration(job.Retries)
+					repo.UpdateStatus(job.ID, "pending")
+					repo.UpdateRetries(job.ID, job.Retries)
 
 					fmt.Printf(
 						"Job %s failed (attempt %d/%d). Retrying in %v...\n",
-						current.ID,
-						current.Retries,
-						current.MaxRetries,
-						backoff,
+						job.ID, job.Retries, job.MaxRetries, backoff,
 					)
 
 					time.Sleep(backoff)
-
-					jobs <- current // requeue
-
 				} else {
-					repo.UpdateStatus(current.ID, "failed")
-					fmt.Printf("Job %s failed permanently after %d attempts\n", current.ID, current.Retries)
+					repo.UpdateStatus(job.ID, "failed")
+					fmt.Printf("Job %s failed permanently after %d attempts\n", job.ID, job.Retries)
 				}
 
 			} else {
-				repo.UpdateStatus(current.ID, "done")
+				repo.UpdateStatus(job.ID, "done")
 			}
 
-			finalJob, _ := repo.Get(current.ID)
+			finalJob, _ := repo.Get(job.ID)
 			fmt.Printf("Worker %d finished job %s with status %s\n", id, finalJob.ID, finalJob.Status)
+
+			time.Sleep(20 * time.Millisecond) // prevent busy loop if DB is very fast
 		}
 	}
 }

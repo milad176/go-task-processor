@@ -18,7 +18,6 @@ import (
 func main() {
 	fmt.Println("Task Processor Starting...")
 
-	jobQueue := make(chan job.Job, 100) // Create a channel (queue)
 	dbConn := db.InitDB()
 	repo := job.NewRepository(dbConn)
 
@@ -28,10 +27,10 @@ func main() {
 	// Start workers (goroutines)
 	for i := 1; i <= 3; i++ {
 
-		go worker.StartWorker(i, jobQueue, repo, ctx)
+		go worker.StartWorker(i, repo, ctx)
 	}
 
-	server := api.NewServer(repo, jobQueue) // Start API server
+	server := api.NewServer(repo) // Start API server
 
 	// Start HTTP server in goroutine
 	go func() {

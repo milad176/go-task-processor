@@ -12,7 +12,6 @@ import (
 
 type Server struct {
 	repo   *job.Repository
-	queue  chan job.Job
 	server *http.Server
 }
 
@@ -20,10 +19,9 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-func NewServer(repo *job.Repository, queue chan job.Job) *Server {
+func NewServer(repo *job.Repository) *Server {
 	s := &Server{
-		repo:  repo,
-		queue: queue,
+		repo: repo,
 	}
 
 	mux := http.NewServeMux()
@@ -91,9 +89,6 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to save job")
 		return
 	}
-
-	// Push to queue
-	s.queue <- job
 
 	// Return response
 	writeJSON(w, http.StatusCreated, job)
