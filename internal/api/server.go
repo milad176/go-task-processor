@@ -68,6 +68,8 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	job.AssignDefaultPriority()
+
 	// Assign system-controlled fields
 	job.ID = uuid.New().String()
 	job.Status = "pending"

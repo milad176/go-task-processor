@@ -17,11 +17,12 @@ func InitDB() *sql.DB {
 	createTableQuery := `
 	CREATE TABLE IF NOT EXISTS jobs (
 		id TEXT PRIMARY KEY,
-		type TEXT,
-		payload TEXT,
-		status TEXT,
-		retries INTEGER,
-		max_retries INTEGER
+	    type TEXT,
+	    payload TEXT,
+	    status TEXT,
+	    retries INTEGER,
+	    max_retries INTEGER,
+	    priority INTEGER
 	);
 	`
 
@@ -30,7 +31,7 @@ func InitDB() *sql.DB {
 		log.Fatal(err)
 	}
 
-	// ✅ Add index on status for faster job retrieval
+	// Add index on status for faster job retrieval
 	createIndexQuery := `
 	CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 	`

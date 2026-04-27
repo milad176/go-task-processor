@@ -9,6 +9,7 @@ type Job struct {
 	Status     string                 `json:"Status"`
 	Retries    int                    `json:"-"`
 	MaxRetries int                    `json:"-"`
+	Priority   int                    `json:"-"`
 }
 
 func (j *Job) Validate() error {
@@ -26,14 +27,14 @@ func (j *Job) Validate() error {
 			return fmt.Errorf("message is required for print job")
 		}
 
-	case "sleep":
-		if j.Payload["duration"] == "" {
-			return fmt.Errorf("duration is required for sleep job")
+	case "payment":
+		if j.Payload["orderId"] == "" {
+			return fmt.Errorf("orderId is required for payment job")
 		}
 
-	case "fail":
-		if j.Payload["message"] == "" {
-			return fmt.Errorf("message is required for fail job")
+	case "report":
+		if j.Payload["reportName"] == "" {
+			return fmt.Errorf("reportName is required for report job")
 		}
 
 	default:
@@ -41,4 +42,17 @@ func (j *Job) Validate() error {
 	}
 
 	return nil
+}
+
+func (j *Job) AssignDefaultPriority() {
+	switch j.Type {
+	case "payment":
+		j.Priority = 3
+	case "report":
+		j.Priority = 2
+	case "print":
+		j.Priority = 1
+	default:
+		j.Priority = 1
+	}
 }

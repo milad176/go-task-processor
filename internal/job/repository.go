@@ -23,8 +23,8 @@ func (r *Repository) Save(job Job) error {
 	}
 
 	_, err = r.db.Exec(
-		`INSERT INTO jobs (id, type, payload, status, retries, max_retries) VALUES (?, ?, ?, ?, ?, ?)`,
-		job.ID, job.Type, string(payloadBytes), job.Status, job.Retries, job.MaxRetries,
+		`INSERT INTO jobs (id, type, payload, status, retries, max_retries, priority) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.Type, string(payloadBytes), job.Status, job.Retries, job.MaxRetries, int64(job.Priority),
 	)
 
 	return err
@@ -34,8 +34,8 @@ func (r *Repository) Get(id string) (Job, error) {
 	var job Job
 	var payloadStr string
 
-	err := r.db.QueryRow(`SELECT id, type, payload, status, retries, max_retries FROM jobs WHERE id = ?`, id).
-		Scan(&job.ID, &job.Type, &payloadStr, &job.Status, &job.Retries, &job.MaxRetries)
+	err := r.db.QueryRow(`SELECT id, type, payload, status, retries, max_retries, priority FROM jobs WHERE id = ?`, id).
+		Scan(&job.ID, &job.Type, &payloadStr, &job.Status, &job.Retries, &job.MaxRetries, &job.Priority)
 
 	if err != nil {
 		return Job{}, err
@@ -54,10 +54,10 @@ func (r *Repository) GetNextPendingJob() (Job, error) {
 	var payload string
 
 	err := r.db.QueryRow(`
-		SELECT id, type, payload, status, retries, max_retries
+		SELECT id, type, payload, status, retries, max_retries, priority
 		FROM jobs
 		WHERE status = 'pending'
-		ORDER BY id
+		ORDER BY priority DESC, id ASC
 		LIMIT 1
 	`).Scan(
 		&job.ID,
@@ -66,6 +66,7 @@ func (r *Repository) GetNextPendingJob() (Job, error) {
 		&job.Status,
 		&job.Retries,
 		&job.MaxRetries,
+		&job.Priority,
 	)
 
 	if err != nil {

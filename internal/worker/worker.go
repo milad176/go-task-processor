@@ -51,7 +51,7 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context) {
 			}
 
 			// Now we OWN the job
-			fmt.Printf("Worker %d processing job %s\n", id, job.ID)
+			fmt.Printf("Worker %d processing job %s [%s] with priority %d\n", id, job.ID, job.Type, job.Priority)
 
 			err = processJob(job)
 
@@ -80,22 +80,30 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context) {
 			}
 
 			finalJob, _ := repo.Get(job.ID)
-			fmt.Printf("Worker %d finished job %s with status %s\n", id, finalJob.ID, finalJob.Status)
+			fmt.Printf("Worker %d finished job %s [%s] with status %s\n", id, finalJob.ID, finalJob.Type, finalJob.Status)
 
-			time.Sleep(20 * time.Millisecond) // prevent busy loop if DB is very fast
+			time.Sleep(1 * time.Second) // prevent busy loop if DB is very fast
 		}
 	}
 }
 
 func processJob(job job.Job) error {
 	switch job.Type {
+
 	case "print":
 		fmt.Println("Message:", job.Payload["message"])
 		return nil
 
-	case "sleep":
-		fmt.Println("Sleeping...")
-		time.Sleep(2 * time.Second)
+	case "payment":
+		fmt.Printf("Processing payment for order %v...\n", job.Payload["orderId"])
+		time.Sleep(1 * time.Second)
+		fmt.Println("Payment completed")
+		return nil
+
+	case "report":
+		fmt.Printf("Generating report %v...\n", job.Payload["reportName"])
+		time.Sleep(3 * time.Second)
+		fmt.Println("Report generated")
 		return nil
 
 	default:
