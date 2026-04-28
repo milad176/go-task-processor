@@ -21,32 +21,17 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context) {
 			return
 
 		default:
-			// Try to get a pending job
-			job, err := repo.GetNextPendingJob()
+			// Atomically fetch + claim next pending job
+			job, err := repo.ClaimNextPendingJob()
 			if err != nil {
 
 				if err == sql.ErrNoRows {
-					// No jobs → normal situation
-					time.Sleep(500 * time.Millisecond)
+					time.Sleep(500 * time.Millisecond) // no jobs available
 					continue
 				}
 
-				// Real error → log it
 				fmt.Printf("Worker %d DB error: %v\n", id, err)
-				time.Sleep(1 * time.Second) // optional backoff
-				continue
-			}
-
-			// Try to claim job
-			claimed, err := repo.ClaimJob(job.ID)
-			if err != nil {
-				fmt.Printf("Worker %d failed to claim job %s: %v\n", id, job.ID, err)
-				continue
-			}
-
-			if !claimed {
-				// another worker already took it
-				fmt.Printf("Worker %d skipped job %s (already claimed)\n", id, job.ID)
+				time.Sleep(1 * time.Second)
 				continue
 			}
 
