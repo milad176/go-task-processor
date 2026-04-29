@@ -21,8 +21,7 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context) {
 			return
 
 		default:
-			// Atomically fetch + claim next pending job
-			job, err := repo.ClaimNextPendingJob()
+			job, err := repo.ClaimNextPendingJob() // Atomically fetch + claim next pending job
 			if err != nil {
 
 				if err == sql.ErrNoRows {
@@ -34,6 +33,8 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context) {
 				time.Sleep(1 * time.Second)
 				continue
 			}
+
+			fmt.Printf("CLAIMED job %s at %d\n", job.ID, job.ClaimedAt)
 
 			// Now we OWN the job
 			fmt.Printf("Worker %d processing job %s [%s] with priority %d\n", id, job.ID, job.Type, job.Priority)
@@ -81,13 +82,13 @@ func processJob(job job.Job) error {
 
 	case "payment":
 		fmt.Printf("Processing payment for order %v...\n", job.Payload["orderId"])
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 		fmt.Println("Payment completed")
 		return nil
 
 	case "report":
 		fmt.Printf("Generating report %v...\n", job.Payload["reportName"])
-		time.Sleep(3 * time.Second)
+		time.Sleep(5 * time.Second)
 		fmt.Println("Report generated")
 		return nil
 

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -23,8 +22,8 @@ func (r *Repository) Save(job Job) error {
 	}
 
 	_, err = r.db.Exec(
-		`INSERT INTO jobs (id, type, payload, status, retries, max_retries, priority) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.Type, string(payloadBytes), job.Status, job.Retries, job.MaxRetries, int64(job.Priority),
+		`INSERT INTO jobs (id, type, payload, status, retries, max_retries, priority, claimed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.Type, string(payloadBytes), job.Status, job.Retries, job.MaxRetries, int64(job.Priority), nil,
 	)
 
 	return err
@@ -64,19 +63,16 @@ func (r *Repository) ClaimNextPendingJob() (Job, error) {
 
 	for i := 0; i < maxRetries; i++ {
 
-		_, err := r.db.Exec("BEGIN IMMEDIATE")
+		tx, err := r.db.Begin()
 		if err != nil {
-			if strings.Contains(err.Error(), "database is locked") {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
 			return Job{}, err
 		}
 
 		var job Job
 		var payload string
 
-		err = r.db.QueryRow(`
+		// 1. pick candidate
+		err = tx.QueryRow(`
 			SELECT id, type, payload, status, retries, max_retries, priority
 			FROM jobs
 			WHERE status = 'pending'
@@ -93,40 +89,77 @@ func (r *Repository) ClaimNextPendingJob() (Job, error) {
 		)
 
 		if err != nil {
-			r.db.Exec("ROLLBACK")
-			return Job{}, err
-		}
+			tx.Rollback()
 
-		err = json.Unmarshal([]byte(payload), &job.Payload)
-		if err != nil {
-			r.db.Exec("ROLLBACK")
-			return Job{}, err
-		}
-
-		_, err = r.db.Exec(`UPDATE jobs SET status = 'processing' WHERE id = ?`, job.ID)
-		if err != nil {
-			r.db.Exec("ROLLBACK")
-
-			if strings.Contains(err.Error(), "database is locked") {
-				time.Sleep(100 * time.Millisecond)
-				continue
+			if err == sql.ErrNoRows {
+				return Job{}, sql.ErrNoRows
 			}
 
 			return Job{}, err
 		}
 
-		_, err = r.db.Exec("COMMIT")
+		// 2. atomic claim
+		res, err := tx.Exec(`
+			UPDATE jobs
+			SET status = 'processing',
+			    claimed_at = ?
+			WHERE id = ? AND status = 'pending'
+		`, time.Now().Unix(), job.ID)
+
 		if err != nil {
-			if strings.Contains(err.Error(), "database is locked") {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-			return Job{}, err
+			tx.Rollback()
+			continue
 		}
 
+		rows, err := res.RowsAffected()
+		if err != nil {
+			tx.Rollback()
+			continue
+		}
+
+		// someone else stole it
+		if rows == 0 {
+			tx.Rollback()
+			continue
+		}
+
+		// 3. commit
+		err = tx.Commit()
+		if err != nil {
+			continue
+		}
+
+		// 4. hydrate payload
+		_ = json.Unmarshal([]byte(payload), &job.Payload)
 		job.Status = "processing"
+		job.ClaimedAt = int64(time.Now().Unix())
+
 		return job, nil
 	}
 
-	return Job{}, fmt.Errorf("failed to claim next pending job after retries")
+	return Job{}, fmt.Errorf("failed to claim job after retries")
+}
+
+func (r *Repository) RecoverStuckJobs() error {
+	threshold := time.Now().Add(-60 * time.Second).Unix()
+
+	result, err := r.db.Exec(`
+		UPDATE jobs
+		SET status = 'pending',
+		claimed_at = NULL
+		WHERE status = 'processing'
+        AND claimed_at IS NOT NULL
+        AND claimed_at < ?
+	`, threshold)
+
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err == nil && rows > 0 {
+		fmt.Printf("Recovered %d stuck job(s)\n", rows)
+	}
+
+	return nil
 }

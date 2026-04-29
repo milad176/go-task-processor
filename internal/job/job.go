@@ -10,6 +10,7 @@ type Job struct {
 	Retries    int                    `json:"-"`
 	MaxRetries int                    `json:"-"`
 	Priority   int                    `json:"-"`
+	ClaimedAt  int64                  `json:"-"`
 }
 
 func (j *Job) Validate() error {

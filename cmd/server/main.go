@@ -28,7 +28,26 @@ func main() {
 	for i := 1; i <= 3; i++ {
 
 		go worker.StartWorker(i, repo, ctx)
+		time.Sleep(150 * time.Millisecond) // stagger worker startup
 	}
+
+	go func() {
+		time.Sleep(10 * time.Second) // allow app to stabilize first
+
+		for {
+			select {
+			case <-ctx.Done():
+				fmt.Println("Recovery service stopping...")
+				return
+			default:
+				err := repo.RecoverStuckJobs()
+				if err != nil {
+					fmt.Println("Recovery service error:", err)
+				}
+				time.Sleep(10 * time.Second)
+			}
+		}
+	}()
 
 	server := api.NewServer(repo) // Start API server
 
