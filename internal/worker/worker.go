@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/milad176/go-task-processor/internal/job"
+	"github.com/milad176/go-task-processor/internal/logger"
 	"github.com/milad176/go-task-processor/internal/metrics"
 )
 
@@ -40,10 +41,11 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context, wg *sync.Wai
 
 		fmt.Printf("CLAIMED job %s at %d\n", job.ID, job.ClaimedAt)
 
-		// Now we OWN the job
-		fmt.Printf("Worker %d processing job %s [%s] with priority %d\n", id, job.ID, job.Type, job.Priority)
+		start := time.Now()
 
-		err = processJob(job)
+		// Now we OWN the job
+		logger.Worker(id, "processing job=%s type=%s priority=%d", job.ID, job.Type, job.Priority)
+		err = processJob(job, id)
 
 		if err != nil {
 			job.Retries++
@@ -55,10 +57,7 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context, wg *sync.Wai
 				repo.UpdateStatus(job.ID, "pending")
 				repo.UpdateRetries(job.ID, job.Retries)
 
-				fmt.Printf(
-					"Job %s failed (attempt %d/%d). Retrying in %v...\n",
-					job.ID, job.Retries, job.MaxRetries, backoff,
-				)
+				fmt.Printf("Job %s failed (attempt %d/%d). Retrying in %v...\n", job.ID, job.Retries, job.MaxRetries, backoff)
 
 				time.Sleep(backoff)
 
@@ -73,34 +72,31 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context, wg *sync.Wai
 			metrics.IncrementProcessed()
 		}
 
-		finalJob, _ := repo.Get(job.ID)
-		fmt.Printf("Worker %d finished job %s [%s] with status %s\n", id, finalJob.ID, finalJob.Type, finalJob.Status)
+		duration := time.Since(start)
 
-		fmt.Printf("METRICS DEBUG => processed=%d failed=%d recovered=%d\n",
-			metrics.Snapshot().Processed,
-			metrics.Snapshot().Failed,
-			metrics.Snapshot().Recovered,
-		)
+		finalJob, _ := repo.Get(job.ID)
+
+		logger.Worker(id, "finished job=%s type=%s status=%s  duration=%s", job.ID, finalJob.Type, finalJob.Status, duration)
 
 		time.Sleep(1 * time.Second) // prevent busy loop if DB is very fast
 	}
 }
 
-func processJob(job job.Job) error {
+func processJob(job job.Job, id int) error {
 	switch job.Type {
 
 	case "print":
-		fmt.Println("Message:", job.Payload["message"])
+		logger.Worker(id, "print message=%v", job.Payload["message"])
 		return nil
 
 	case "payment":
-		fmt.Printf("Processing payment for order %v...\n", job.Payload["orderId"])
+		logger.Worker(id, "processing payment for order=%v", job.Payload["orderId"])
 		time.Sleep(7 * time.Second)
 		fmt.Println("Payment completed")
 		return nil
 
 	case "report":
-		fmt.Printf("Generating report %v...\n", job.Payload["reportName"])
+		logger.Worker(id, "generating report=%v", job.Payload["reportName"])
 		time.Sleep(5 * time.Second)
 		fmt.Println("Report generated")
 		return nil
