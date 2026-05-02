@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,11 +25,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background()) // Create a context for graceful shutdown
 	defer cancel()
 
+	var wg sync.WaitGroup // WaitGroup to wait for all workers to finish
+
 	// Start workers (goroutines)
 	for i := 1; i <= 3; i++ {
-
-		go worker.StartWorker(i, repo, ctx)
-		time.Sleep(150 * time.Millisecond) // stagger worker startup
+		wg.Add(1)
+		go worker.StartWorker(i, repo, ctx, &wg)
+		time.Sleep(150 * time.Millisecond)
 	}
 
 	go func() {
@@ -69,6 +72,7 @@ func main() {
 
 	// Stop workers
 	cancel()
+	wg.Wait() // Wait for all workers to finish
 
 	// Shutdown HTTP server
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
