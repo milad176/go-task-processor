@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/milad176/go-task-processor/internal/job"
+	"github.com/milad176/go-task-processor/internal/metrics"
 )
 
 type Server struct {
@@ -28,6 +29,7 @@ func NewServer(repo *job.Repository) *Server {
 
 	mux.Handle("/jobs", LoggingMiddleware(http.HandlerFunc(s.handleCreateJob)))
 	mux.Handle("/jobs/", LoggingMiddleware(http.HandlerFunc(s.handleGetJob)))
+	mux.Handle("/metrics", LoggingMiddleware(http.HandlerFunc(s.handleMetrics)))
 
 	s.server = &http.Server{
 		Addr:    ":8080",
@@ -122,4 +124,14 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, ErrorResponse{Error: message})
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	snapshot := metrics.Snapshot()
+	writeJSON(w, http.StatusOK, snapshot)
 }

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/milad176/go-task-processor/internal/metrics"
 )
 
 type Repository struct {
@@ -159,6 +161,7 @@ func (r *Repository) RecoverStuckJobs() error {
 	rows, err := result.RowsAffected()
 	if err == nil && rows > 0 {
 		fmt.Printf("Recovered %d stuck job(s)\n", rows)
+		metrics.IncrementRecovered(int(rows))
 	}
 
 	return nil

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/milad176/go-task-processor/internal/job"
+	"github.com/milad176/go-task-processor/internal/metrics"
 )
 
 func StartWorker(id int, repo *job.Repository, ctx context.Context, wg *sync.WaitGroup) {
@@ -63,15 +64,23 @@ func StartWorker(id int, repo *job.Repository, ctx context.Context, wg *sync.Wai
 
 			} else {
 				repo.UpdateStatus(job.ID, "failed")
+				metrics.IncrementFailed()
 				fmt.Printf("Job %s failed permanently after %d attempts\n", job.ID, job.Retries)
 			}
 
 		} else {
 			repo.UpdateStatus(job.ID, "done")
+			metrics.IncrementProcessed()
 		}
 
 		finalJob, _ := repo.Get(job.ID)
 		fmt.Printf("Worker %d finished job %s [%s] with status %s\n", id, finalJob.ID, finalJob.Type, finalJob.Status)
+
+		fmt.Printf("METRICS DEBUG => processed=%d failed=%d recovered=%d\n",
+			metrics.Snapshot().Processed,
+			metrics.Snapshot().Failed,
+			metrics.Snapshot().Recovered,
+		)
 
 		time.Sleep(1 * time.Second) // prevent busy loop if DB is very fast
 	}
@@ -86,7 +95,7 @@ func processJob(job job.Job) error {
 
 	case "payment":
 		fmt.Printf("Processing payment for order %v...\n", job.Payload["orderId"])
-		time.Sleep(15 * time.Second)
+		time.Sleep(7 * time.Second)
 		fmt.Println("Payment completed")
 		return nil
 
